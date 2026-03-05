@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tasman Sales Rep - Admin Dashboard</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f7; color: #1d1d1f; }
+        .header { background: #fff; padding: 20px 30px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 22px; font-weight: 600; }
+        .header .stats { display: flex; gap: 20px; }
+        .stat { text-align: center; }
+        .stat .number { font-size: 24px; font-weight: 700; color: #007aff; }
+        .stat .label { font-size: 12px; color: #86868b; text-transform: uppercase; }
+        .container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 20px 30px; height: calc(100vh - 80px); }
+        #map { border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .table-container { background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; display: flex; flex-direction: column; }
+        .table-header { padding: 16px 20px; border-bottom: 1px solid #e5e5e7; display: flex; justify-content: space-between; align-items: center; }
+        .table-header h2 { font-size: 16px; font-weight: 600; }
+        .refresh-btn { background: #007aff; color: #fff; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+        .refresh-btn:hover { background: #0056cc; }
+        .table-scroll { overflow-y: auto; flex: 1; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #f5f5f7; padding: 10px 16px; text-align: left; font-size: 12px; font-weight: 600; color: #86868b; text-transform: uppercase; position: sticky; top: 0; }
+        td { padding: 12px 16px; border-bottom: 1px solid #f0f0f2; font-size: 14px; }
+        tr:hover { background: #f9f9fb; }
+        .company { font-weight: 600; }
+        .date { color: #86868b; font-size: 12px; }
+        .coords { font-family: monospace; font-size: 11px; color: #86868b; }
+        .map-link { color: #007aff; text-decoration: none; font-size: 12px; }
+        .map-link:hover { text-decoration: underline; }
+        .loading { display: flex; align-items: center; justify-content: center; height: 200px; color: #86868b; }
+        .empty { text-align: center; padding: 40px; color: #86868b; }
+        @media (max-width: 900px) {
+            .container { grid-template-columns: 1fr; }
+            #map { min-height: 300px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Tasman Sales Rep Dashboard</h1>
+        <div class="stats">
+            <div class="stat">
+                <div class="number" id="totalVisits">-</div>
+                <div class="label">Total Visits</div>
+            </div>
+            <div class="stat">
+                <div class="number" id="todayVisits">-</div>
+                <div class="label">Today</div>
+            </div>
+            <div class="stat">
+                <div class="number" id="uniqueCompanies">-</div>
+                <div class="label">Companies</div>
+            </div>
+        </div>
+    </div>
+    <div class="container">
+        <div id="map"></div>
+        <div class="table-container">
+            <div class="table-header">
+                <h2>Visit Entries</h2>
+                <button class="refresh-btn" onclick="loadEntries()">Refresh</button>
+            </div>
+            <div class="table-scroll">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Company</th>
+                            <th>Contact</th>
+                            <th>Date</th>
+                            <th>Location</th>
+                        </tr>
+                    </thead>
+                    <tbody id="entriesBody">
+                        <tr><td colspan="4" class="loading">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const SUPABASE_URL = 'https://erhrusojfeavsgmkqgmw.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVyaHJ1c29qZmVhdnNnbWtxZ213Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2NTQ0NjIsImV4cCI6MjA4ODIzMDQ2Mn0.SSSLJQIcOg2TOoC6f6JzME82Qw71KpNmn81BKFYBH4Q';
+
+        // Init map centered on Melbourne
+        const map = L.map('map').setView([-37.8136, 144.9631], 10);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        let markers = [];
+
+        async function loadEntries() {
+            try {
+                const res = await fetch(
+                    `${SUPABASE_URL}/rest/v1/visit_entries?select=*&order=visit_date.desc`,
+                    {
+                        headers: {
+                            'apikey': SUPABASE_KEY,
+                            'Authorization': `Bearer ${SUPABASE_KEY}`
+                        }
+                    }
+                );
+                const entries = await res.json();
+                renderTable(entries);
+                renderMap(entries);
+                updateStats(entries);
+            } catch (err) {
+                document.getElementById('entriesBody').innerHTML =
+                    `<tr><td colspan="4" class="empty">Error loading data: ${err.message}</td></tr>`;
+            }
+        }
+
+        function renderTable(entries) {
+            const tbody = document.getElementById('entriesBody');
+            if (entries.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="empty">No visits logged yet.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = entries.map(e => {
+                const date = new Date(e.visit_date);
+                const dateStr = date.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+                const timeStr = date.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
+                const lat = e.latitude;
+                const lng = e.longitude;
+                const hasCoords = lat != null && lng != null && !isNaN(lat) && !isNaN(lng);
+                const coordsStr = hasCoords ? `${Number(lat).toFixed(4)}, ${Number(lng).toFixed(4)}` : 'N/A';
+                const mapsUrl = hasCoords ? `https://www.google.com/maps?q=${lat},${lng}` : '#';
+                return `<tr>
+                    <td class="company">${esc(e.company_name)}</td>
+                    <td>${esc(e.contact_person)}</td>
+                    <td><span class="date">${dateStr} ${timeStr}</span></td>
+                    <td>
+                        <span class="coords">${coordsStr}</span><br>
+                        ${hasCoords ? `<a href="${mapsUrl}" target="_blank" class="map-link">Open in Maps</a>` : ''}
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
+        function renderMap(entries) {
+            markers.forEach(m => map.removeLayer(m));
+            markers = [];
+            if (entries.length === 0) return;
+
+            const bounds = [];
+            entries.forEach(e => {
+                const lat = e.latitude;
+                const lng = e.longitude;
+                if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) return;
+                const marker = L.marker([lat, lng]).addTo(map);
+                const date = new Date(e.visit_date);
+                marker.bindPopup(`
+                    <strong>${esc(e.company_name)}</strong><br>
+                    Contact: ${esc(e.contact_person)}<br>
+                    ${date.toLocaleDateString('en-AU')}<br>
+                    ${e.notes ? '<em>' + esc(e.notes) + '</em>' : ''}
+                `);
+                markers.push(marker);
+                bounds.push([lat, lng]);
+            });
+            if (bounds.length > 0) {
+                map.fitBounds(bounds, { padding: [30, 30] });
+            }
+        }
+
+        function updateStats(entries) {
+            document.getElementById('totalVisits').textContent = entries.length;
+
+            const today = new Date().toDateString();
+            const todayCount = entries.filter(e => new Date(e.visit_date).toDateString() === today).length;
+            document.getElementById('todayVisits').textContent = todayCount;
+
+            const companies = new Set(entries.map(e => e.company_name));
+            document.getElementById('uniqueCompanies').textContent = companies.size;
+        }
+
+        function esc(str) {
+            const div = document.createElement('div');
+            div.textContent = str || '';
+            return div.innerHTML;
+        }
+
+        // Load on start and auto-refresh every 30 seconds
+        loadEntries();
+        setInterval(loadEntries, 30000);
+    </script>
+</body>
+</html>

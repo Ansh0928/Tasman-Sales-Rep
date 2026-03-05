@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 @main
 struct Tasman_Sales_RepApp: App {
@@ -13,5 +14,6 @@ struct Tasman_Sales_RepApp: App {
         WindowGroup {
             ContentView()
         }
+        .modelContainer(for: VisitEntry.self)
     }
 }
