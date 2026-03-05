@@ -1,6 +1,18 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const handler = () => setMatches(mq.matches);
+    handler();
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, [query]);
+  return matches;
+}
 import dynamic from "next/dynamic";
 
 const MapView = dynamic(() => import("./MapView"), { ssr: false });
@@ -17,10 +29,11 @@ interface VisitEntry {
   longitude: number;
   notes: string;
   visit_date: string;
-  device_id: string;
+  device_id?: string;
 }
 
 export default function Dashboard() {
+  const isMobile = useMediaQuery("(max-width: 768px)");
   const [entries, setEntries] = useState<VisitEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +78,32 @@ export default function Dashboard() {
 
   const uniqueCompanies = new Set(entries.map((e) => e.company_name)).size;
 
+  const envMissing = !SUPABASE_URL || !SUPABASE_KEY;
+
+  if (envMissing) {
+    return (
+      <div style={styles.setupRoot}>
+        <header style={styles.header}>
+          <h1 style={styles.title}>Tasman Sales Rep Dashboard</h1>
+        </header>
+        <div style={styles.setupBlock}>
+          <h2 style={styles.setupTitle}>Setup required</h2>
+          <p style={styles.setupText}>
+            The dashboard needs Supabase credentials to load visit entries.
+          </p>
+          <ol style={styles.setupSteps}>
+            <li>Copy <code style={styles.setupCode}>.env.example</code> to <code style={styles.setupCode}>.env.local</code></li>
+            <li>Edit <code style={styles.setupCode}>.env.local</code> and add your Supabase project URL and anon key</li>
+            <li>Get these from Supabase Dashboard → Project Settings → API</li>
+          </ol>
+          <p style={styles.setupHint}>
+            Restart the dev server after changing env vars.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       {/* Header */}
@@ -87,7 +126,12 @@ export default function Dashboard() {
       </header>
 
       {/* Main Content */}
-      <div style={styles.container}>
+      <div
+        style={{
+          ...styles.container,
+          gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+        }}
+      >
         {/* Map */}
         <div style={styles.mapContainer}>
           <MapView entries={entries} />
@@ -268,4 +312,28 @@ const styles: Record<string, React.CSSProperties> = {
   coords: { fontFamily: "monospace", fontSize: 11, color: "#86868b" },
   mapLink: { color: "#007aff", textDecoration: "none", fontSize: 12 },
   empty: { textAlign: "center" as const, padding: 40, color: "#86868b" },
+  setupRoot: { minHeight: "100vh", background: "#f5f5f7" },
+  setupBlock: {
+    maxWidth: 480,
+    margin: "40px auto",
+    padding: 32,
+    background: "#fff",
+    borderRadius: 12,
+    boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+  },
+  setupTitle: { fontSize: 18, fontWeight: 600, margin: "0 0 12px" },
+  setupText: { margin: "0 0 16px", color: "#555", lineHeight: 1.5 },
+  setupSteps: {
+    margin: "0 0 16px",
+    paddingLeft: 20,
+    color: "#333",
+    lineHeight: 1.8,
+  },
+  setupHint: { margin: 0, fontSize: 13, color: "#86868b" },
+  setupCode: {
+    background: "#f0f0f2",
+    padding: "2px 6px",
+    borderRadius: 4,
+    fontSize: 13,
+  },
 };
