@@ -5,9 +5,8 @@ import dynamic from "next/dynamic";
 
 const MapView = dynamic(() => import("./MapView"), { ssr: false });
 
-const SUPABASE_URL = "https://erhrusojfeavsgmkqgmw.supabase.co";
-const SUPABASE_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVyaHJ1c29qZmVhdnNnbWtxZ213Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2NTQ0NjIsImV4cCI6MjA4ODIzMDQ2Mn0.SSSLJQIcOg2TOoC6f6JzME82Qw71KpNmn81BKFYBH4Q";
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
 interface VisitEntry {
   id: string;
@@ -27,6 +26,11 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
 
   const loadEntries = useCallback(async () => {
+    if (!SUPABASE_URL || !SUPABASE_KEY) {
+      setError("Missing Supabase env: set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY");
+      setLoading(false);
+      return;
+    }
     try {
       const res = await fetch(
         `${SUPABASE_URL}/rest/v1/visit_entries?select=*&order=visit_date.desc`,
@@ -209,12 +213,15 @@ const styles: Record<string, React.CSSProperties> = {
     gridTemplateColumns: "1fr 1fr",
     gap: 20,
     padding: "20px 30px",
+    minHeight: "calc(100vh - 90px)",
     height: "calc(100vh - 90px)",
   },
   mapContainer: {
     borderRadius: 12,
     overflow: "hidden",
     boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+    minHeight: 320,
+    height: "100%",
   },
   tableContainer: {
     background: "#fff",

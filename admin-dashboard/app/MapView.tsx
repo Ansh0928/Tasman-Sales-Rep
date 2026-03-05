@@ -58,5 +58,10 @@ export default function MapView({ entries }: { entries: Entry[] }) {
     }
   }, [entries]);
 
-  return <div ref={containerRef} style={{ width: "100%", height: "100%" }} />;
+  return (
+    <div
+      ref={containerRef}
+      style={{ width: "100%", height: "100%", minHeight: 300 }}
+    />
+  );
 }
